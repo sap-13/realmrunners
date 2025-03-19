@@ -9,93 +9,71 @@ const gameUI = document.getElementById('game-ui');
 const connectionStatus = document.getElementById('connection-status');
 
 // Game state
-let gameState = 'connecting';
-let playerId = null;
+let gameState = 'waiting'; // Start in waiting state instead of connecting
+let playerId = 'player_local';
 let players = {};
 let levelData = null;
 let rankingData = null;
-let waitingInfo = null;
+let waitingInfo = {current: 1, required: 5, countdown: 5};
 let keysPressed = {};
+let localGameLoop = null;
+let gameStartTime = null;
+let finishTimes = {};
 
-// Connect to WebSocket server
-const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const wsHost = `${protocol}//${window.location.host}`;
-let socket;
+// Initialize the player
+players[playerId] = {
+    id: playerId,
+    x: 100,
+    y: 100,
+    vx: 0,
+    vy: 0,
+    isJumping: false,
+    isFinished: false,
+    finishTime: null,
+    color: '#5F9EA0', // You're always teal in solo mode
+};
 
-function connectToServer() {
-    socket = new WebSocket(wsHost);
-    
-    socket.onopen = () => {
-        console.log('Connected to server');
-        connectionStatus.textContent = 'Connected to server';
-        connectionStatus.classList.remove('connecting');
-    };
-    
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        handleServerMessage(data);
-    };
-    
-    socket.onclose = () => {
-        console.log('Disconnected from server');
-        gameState = 'disconnected';
-        connectionStatus.textContent = 'Disconnected from server';
-        connectionStatus.classList.add('connecting');
-        
-        // Try to reconnect after a delay
-        setTimeout(connectToServer, 3000);
-    };
-    
-    socket.onerror = (error) => {
-        console.error('WebSocket error:', error);
-    };
-}
+// Add AI players
+const aiPlayers = ['ai_player1', 'ai_player2', 'ai_player3', 'ai_player4'];
+const aiColors = ['#FF6347', '#FFD700', '#7CFC00', '#9370DB'];
 
-// Handle messages from the server
-function handleServerMessage(data) {
-    console.log('Received message:', data.type);
-    
-    switch (data.type) {
-        case 'connection_success':
-            playerId = data.playerId;
-            console.log('Connected as player', playerId);
-            break;
-            
-        case 'waiting_for_players':
-            gameState = 'waiting';
-            waitingInfo = data;
-            updateWaitingUI();
-            break;
-            
-        case 'game_start':
-            gameState = 'playing';
-            levelData = data.levelData;
-            console.log('Game starting!');
-            updateGameUI();
-            break;
-            
-        case 'game_update':
-            // Update player positions
-            data.players.forEach(player => {
-                players[player.id] = player;
-            });
-            break;
-            
-        case 'game_end':
-            gameState = 'game_over';
-            rankingData = data.rankings;
-            console.log('Game over, rankings:', rankingData);
-            updateGameOverUI();
-            break;
-    }
-}
+aiPlayers.forEach((id, index) => {
+    players[id] = {
+        id: id,
+        x: 50,
+        y: 100 + (index * 50),
+        vx: 0,
+        vy: 0,
+        isJumping: false,
+        isFinished: false,
+        finishTime: null,
+        color: aiColors[index],
+        aiLevel: Math.random() * 0.5 + 0.5, // Random skill level between 0.5 and 1.0
+    };
+});
 
-// Update UI for waiting state
+// Level data
+levelData = {
+  platforms: [
+    {x: 0, y: 500, width: 800, height: 50},  // Ground
+    {x: 200, y: 400, width: 100, height: 20},
+    {x: 400, y: 350, width: 100, height: 20},
+    {x: 600, y: 300, width: 100, height: 20},
+    {x: 800, y: 250, width: 100, height: 20},
+  ],
+  hazards: [
+    {x: 300, y: 480, width: 100, height: 20},  // Spike pit
+    {x: 500, y: 480, width: 100, height: 20},
+  ],
+  finishLine: {x: 900, y: 0, width: 50, height: 500}
+};
+
+// Update waiting UI
 function updateWaitingUI() {
     gameUI.innerHTML = `
         <div id="game-title">Realm Runners</div>
         <div class="status">
-            Waiting for players: ${waitingInfo.current}/${waitingInfo.required}
+            Solo Mode - Starting in ${waitingInfo.countdown}...
         </div>
         <div id="instructions">
             Use ← → arrows or A/D to move. <br>
@@ -122,7 +100,7 @@ function updateGameOverUI() {
     rankingData.forEach(rank => {
         const isYou = rank.playerId === playerId;
         const playerClass = isYou ? 'you' : '';
-        const playerName = isYou ? 'YOU' : `Player ${rank.playerId.slice(-3)}`;
+        const playerName = isYou ? 'YOU' : `AI ${rank.playerId.slice(-1)}`;
         const time = rank.time !== null ? `${rank.time.toFixed(2)}s` : 'DNF';
         
         rankingsHTML += `
@@ -138,20 +116,205 @@ function updateGameOverUI() {
         <div id="rankings">
             <h2>Final Rankings</h2>
             ${rankingsHTML}
-            <p>Next game starting soon...</p>
+            <button id="play-again" style="padding: 10px 20px; margin-top: 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">Play Again</button>
         </div>
     `;
+    
+    // Add click event to play again button
+    document.getElementById('play-again').addEventListener('click', () => {
+        resetGame();
+    });
 }
 
-// Update UI for disconnected state
-function updateDisconnectedUI() {
-    gameUI.innerHTML = `
-        <div id="game-title">Realm Runners</div>
-        <div class="status connecting">
-            Disconnected from server<br>
-            Attempting to reconnect...
-        </div>
-    `;
+// Reset the game for a new round
+function resetGame() {
+    // Reset player positions
+    players[playerId].x = 100;
+    players[playerId].y = 100;
+    players[playerId].vx = 0;
+    players[playerId].vy = 0;
+    players[playerId].isJumping = false;
+    players[playerId].isFinished = false;
+    players[playerId].finishTime = null;
+    
+    aiPlayers.forEach((id, index) => {
+        players[id].x = 50;
+        players[id].y = 100 + (index * 50);
+        players[id].vx = 0;
+        players[id].vy = 0;
+        players[id].isJumping = false;
+        players[id].isFinished = false;
+        players[id].finishTime = null;
+        players[id].aiLevel = Math.random() * 0.5 + 0.5; // Randomize skill level again
+    });
+    
+    // Reset game state
+    gameState = 'waiting';
+    waitingInfo = {current: 1, required: 5, countdown: 5};
+    finishTimes = {};
+    
+    // Start countdown
+    connectionStatus.textContent = 'Local Mode Active';
+    connectionStatus.classList.remove('connecting');
+    startCountdown();
+}
+
+// Handle countdown before game start
+function startCountdown() {
+    updateWaitingUI();
+    
+    const countdownInterval = setInterval(() => {
+        waitingInfo.countdown--;
+        updateWaitingUI();
+        
+        if (waitingInfo.countdown <= 0) {
+            clearInterval(countdownInterval);
+            startGame();
+        }
+    }, 1000);
+}
+
+// Start the game
+function startGame() {
+    gameState = 'playing';
+    gameStartTime = Date.now();
+    updateGameUI();
+    
+    // Start the game loop if not already running
+    if (!localGameLoop) {
+        localGameLoop = setInterval(updateGamePhysics, 1000 / 60); // 60 FPS
+    }
+}
+
+// AI logic for computer players
+function updateAI() {
+    aiPlayers.forEach(id => {
+        const player = players[id];
+        if (player.isFinished) return;
+        
+        // Random chance to jump when near a gap
+        const isNearHazard = levelData.hazards.some(hazard => 
+            Math.abs(player.x - hazard.x) < 100 && player.x < hazard.x
+        );
+        
+        // Random chance to jump based on AI level
+        if (isNearHazard && !player.isJumping && Math.random() < player.aiLevel) {
+            player.vy = -10;
+            player.isJumping = true;
+        }
+        
+        // Always move right (towards finish) with random variations in speed
+        player.vx = 3 + (Math.random() * 2 * player.aiLevel);
+    });
+}
+
+// Update physics for all players
+function updateGamePhysics() {
+    // Update AI movement
+    updateAI();
+    
+    // Process physics for all players
+    Object.values(players).forEach(player => {
+        if (player.isFinished) return;
+        
+        // Apply gravity
+        player.vy += 0.5;
+        
+        // Update position
+        player.x += player.vx;
+        player.y += player.vy;
+        
+        // Platform collision
+        for (let platform of levelData.platforms) {
+            if (player.x + 20 > platform.x &&
+                player.x < platform.x + platform.width &&
+                player.y + 40 > platform.y &&
+                player.y + 40 < platform.y + 10) {
+                player.y = platform.y - 40;
+                player.vy = 0;
+                player.isJumping = false;
+            }
+        }
+        
+        // Hazard collision
+        for (let hazard of levelData.hazards) {
+            if (player.x + 20 > hazard.x &&
+                player.x < hazard.x + hazard.width &&
+                player.y + 40 > hazard.y &&
+                player.y < hazard.y + hazard.height) {
+                // Reset player to a bit back from where they fell
+                player.x = Math.max(50, player.x - 100);
+                player.y = 400;
+                player.vx = 0;
+                player.vy = 0;
+            }
+        }
+        
+        // Boundaries
+        if (player.x < 0) player.x = 0;
+        if (player.y < 0) player.y = 0;
+        if (player.y > SCREEN_HEIGHT) {
+            player.y = 400;
+            player.vy = 0;
+        }
+        
+        // Finish line detection
+        const finish = levelData.finishLine;
+        if (player.x + 20 > finish.x &&
+            player.x < finish.x + finish.width) {
+            if (!player.isFinished) {
+                player.isFinished = true;
+                player.finishTime = Date.now() - gameStartTime;
+                finishTimes[player.id] = player.finishTime;
+                
+                // Check if all players finished
+                checkForGameEnd();
+            }
+        }
+    });
+}
+
+// Check if the game should end
+function checkForGameEnd() {
+    const allPlayersFinished = Object.values(players).every(p => p.isFinished);
+    const timePassed = Date.now() - gameStartTime > 30000; // 30 second time limit
+    
+    if (allPlayersFinished || timePassed) {
+        endGame();
+    }
+}
+
+// End the game and show results
+function endGame() {
+    gameState = 'game_over';
+    
+    if (localGameLoop) {
+        clearInterval(localGameLoop);
+        localGameLoop = null;
+    }
+    
+    // Calculate rankings
+    const finishedPlayers = Object.values(players).filter(p => p.isFinished)
+        .sort((a, b) => a.finishTime - b.finishTime);
+    
+    const unfinishedPlayers = Object.values(players).filter(p => !p.isFinished);
+    
+    rankingData = finishedPlayers.map((p, i) => ({
+        rank: i + 1,
+        playerId: p.id,
+        time: p.finishTime / 1000
+    }));
+    
+    // Add unfinished players
+    unfinishedPlayers.forEach(p => {
+        rankingData.push({
+            rank: rankingData.length + 1,
+            playerId: p.id,
+            time: null
+        });
+    });
+    
+    updateGameOverUI();
 }
 
 // Draw game elements
@@ -195,7 +358,7 @@ function drawGame() {
         // Player label
         ctx.fillStyle = '#FFF';
         ctx.font = '12px Arial';
-        const labelText = player.id === playerId ? 'YOU' : `P${player.id.slice(-3)}`;
+        const labelText = player.id === playerId ? 'YOU' : `AI ${player.id.slice(-1)}`;
         ctx.fillText(labelText, player.x, player.y - 5);
         
         // Show "FINISHED!" for players who have finished
@@ -226,24 +389,6 @@ function drawWaiting() {
     }
 }
 
-// Draw disconnected screen
-function drawDisconnected() {
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
-    
-    // Draw red disconnection symbol
-    ctx.strokeStyle = '#F55';
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.arc(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 50, 50, 0, Math.PI * 2);
-    ctx.stroke();
-    
-    ctx.beginPath();
-    ctx.moveTo(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 110);
-    ctx.lineTo(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 - 90);
-    ctx.stroke();
-}
-
 // Main game loop
 function gameLoop() {
     // Handle input if game is playing
@@ -253,10 +398,6 @@ function gameLoop() {
     
     // Draw based on game state
     switch (gameState) {
-        case 'connecting':
-            drawWaiting();
-            break;
-            
         case 'waiting':
             drawWaiting();
             break;
@@ -268,11 +409,6 @@ function gameLoop() {
         case 'game_over':
             drawGame();
             break;
-            
-        case 'disconnected':
-            drawDisconnected();
-            updateDisconnectedUI();
-            break;
     }
     
     // Continue the game loop
@@ -281,37 +417,25 @@ function gameLoop() {
 
 // Handle keyboard input
 function handleInput() {
-    let input = null;
+    const player = players[playerId];
     
     if (keysPressed['ArrowLeft'] || keysPressed['a'] || keysPressed['A']) {
-        input = 'left';
+        player.vx = -5;
     } else if (keysPressed['ArrowRight'] || keysPressed['d'] || keysPressed['D']) {
-        input = 'right';
+        player.vx = 5;
     } else {
-        input = 'stop_horizontal';
+        player.vx = 0;
     }
     
-    if (input) {
-        sendInput(input);
-    }
-    
-    if (keysPressed['ArrowUp'] || keysPressed[' '] || keysPressed['w'] || keysPressed['W']) {
-        sendInput('jump');
+    if ((keysPressed['ArrowUp'] || keysPressed[' '] || keysPressed['w'] || keysPressed['W']) && !player.isJumping) {
+        player.vy = -10;
+        player.isJumping = true;
+        
         // Remove the key from pressed keys to prevent continuous jumping
         delete keysPressed['ArrowUp'];
         delete keysPressed[' '];
         delete keysPressed['w'];
         delete keysPressed['W'];
-    }
-}
-
-// Send input to server
-function sendInput(input) {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({
-            type: 'player_input',
-            input: input
-        }));
     }
 }
 
@@ -324,6 +448,8 @@ window.addEventListener('keyup', (e) => {
     delete keysPressed[e.key];
 });
 
-// Connect to server and start game
-connectToServer();
+// Initialize 
+connectionStatus.textContent = 'Local Mode Active';
+connectionStatus.classList.remove('connecting');
+startCountdown();
 gameLoop();
