@@ -1,0 +1,22 @@
+{
+  "name": "realm-runners",
+  "version": "1.0.0",
+  "description": "A multiplayer online platformer racing game",
+  "main": "game-server.js",
+  "scripts": {
+    "start": "node game-server.js",
+    "dev": "nodemon game-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "ws": "^8.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "private": true,
+  "license": "UNLICENSED"
+}
