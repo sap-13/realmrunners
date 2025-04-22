@@ -1,376 +1,83 @@
 <!DOCTYPE html>
- <html lang="en">
- <head>
-     <meta charset="UTF-8">
-     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-     <title>Realm Runners</title>
-     <style>
-         body {
-             margin: 0;
-             padding: 0;
-             font-family: 'Arial', sans-serif;
-             background-color: #222;
-             color: white;
-             display: flex;
-             justify-content: center;
-             align-items: center;
-             height: 100vh;
-         }
-         
-         #game-container {
-             width: 1000px;
-             height: 600px;
-             position: relative;
-             overflow: hidden;
-             background-color: #000;
-             box-shadow: 0 0 20px rgba(0, 0, 255, 0.5);
-         }
-         
-         canvas {
-             position: absolute;
-             top: 0;
-             left: 0;
-         }
-         
-         #game-ui {
-             position: absolute;
-             top: 0;
-             left: 0;
-             width: 100%;
-             height: 100%;
-             pointer-events: none;
-             display: flex;
-             flex-direction: column;
-             justify-content: center;
-             align-items: center;
-             font-size: 24px;
-             text-align: center;
-         }
-         
-         #game-title {
-             position: absolute;
-             top: 20px;
-             width: 100%;
-             text-align: center;
-             font-size: 36px;
-             color: #88f;
-             text-shadow: 0 0 10px rgba(50, 50, 255, 0.8);
-             font-weight: bold;
-         }
-         
-         #instructions {
-             position: absolute;
-             bottom: 20px;
-             width: 100%;
-             text-align: center;
-             font-size: 16px;
-             color: #fff;
-         }
-         
-         #rankings {
-             background-color: rgba(0, 0, 0, 0.7);
-             padding: 20px;
-             border-radius: 10px;
-             max-width: 80%;
-         }
-         
-         .rank-item {
-             margin: 10px 0;
-             font-size: 20px;
-             display: flex;
-             justify-content: space-between;
-             width: 300px;
-         }
-         
-         .rank-item .you {
-             color: #8f8;
-             font-weight: bold;
-         }
-         
-         .status {
-             color: #8cf;
-         }
-         
-         .connecting {
-             animation: pulse 1.5s infinite;
-         }
-         
-         @keyframes pulse {
-             0% { opacity: 0.6; }
-             50% { opacity: 1; }
-             100% { opacity: 0.6; }
-         }
-         
-         #play-again {
-             pointer-events: auto !important;
-         }
-     </style>
-   <meta charset="UTF-8">
-   <title>Realm Runners (Web)</title>
-   <style>
-     body { margin:0; overflow:hidden; background:#222; }
-     canvas { display:block; margin:0 auto; background:#222; }
-     #menuOverlay, #optionsOverlay, #endOverlay {
-       position:absolute; top:0; left:0; width:100%; height:100%; display:flex;
-       justify-content:center; align-items:center; flex-direction:column;
-       background: rgba(0,0,0,0.8); color:#fff; font-family:sans-serif;
-       z-index:10;
-     }
-     #optionsOverlay, #endOverlay { display:none; }
-     button { padding:10px 20px; margin:10px; font-size:18px; cursor:pointer; }
-     #optionsBtn {
-       position:absolute; top:10px; right:10px; z-index:5;
-       width:32px; height:32px; font-size:24px; background:#444; color:#fff; border:none;
-       cursor:pointer;
-     }
-   </style>
- </head>
- <body>
-     <div id="game-container">
-         <canvas id="game-canvas" width="1000" height="600"></canvas>
-         <div id="game-ui">
-             <div id="game-title">Realm Runners</div>
-             <div id="connection-status" class="status connecting">Connecting to server...</div>
-             <div id="instructions">
-                 Use ← → arrows or A/D to move. <br>
-                 Press SPACE or ↑ to jump.
-             </div>
-         </div>
-     </div>
-     
-     <script src="game.js"></script>
- <div id="menuOverlay">
-   <h1>Realm Runners</h1>
-   <p><span style="color:lime;">■</span> Goal Banner &nbsp; <span style="color:red;">▲</span> Spikes &nbsp; <span style="color:#0f0;">■</span> Bounce Pad</p>
-   <button id="startBtn">Start Race</button>
- </div>
- <div id="optionsOverlay">
-   <h2>Options</h2>
-   <button id="newGameBtn">New Game</button>
-   <button id="restartBtn">Restart</button>
-   <button id="closeOptsBtn">Close</button>
- </div>
- <div id="endOverlay">
-   <h2>Race Finished!</h2>
-   <button id="endNewBtn">New Game</button>
- </div>
- <button id="optionsBtn">+</button>
- <canvas id="game" width="1024" height="576"></canvas>
- <script>
- // --- Vector2 ---
- class Vec2 {
-   constructor(x=0,y=0){ this.x=x; this.y=y; }
-   add(v){ return new Vec2(this.x+v.x, this.y+v.y); }
-   mul(s){ return new Vec2(this.x*s, this.y*s); }
-   length(){ return Math.hypot(this.x, this.y); }
-   normalize(){ const l=this.length(); return l? new Vec2(this.x/l,this.y/l): new Vec2(0,0); }
- }
- // --- States ---
- const STATE={MENU:0,COUNTDOWN:1,RUNNING:2,GAMEOVER:3};
- let gameState=STATE.MENU, countdown=5, gameTime=0;
- // --- Canvas ---
- const canvas=document.getElementById('game'), ctx=canvas.getContext('2d'); let lastTime=0;
- // --- Input ---
- const keys={}; window.addEventListener('keydown',e=>keys[e.code]=true); window.addEventListener('keyup',e=>delete keys[e.code]);
- // --- UI ---
- const menuOverlay=document.getElementById('menuOverlay');
- const optionsOverlay=document.getElementById('optionsOverlay');
- const endOverlay=document.getElementById('endOverlay');
- const startBtn=document.getElementById('startBtn');
- const optionsBtn=document.getElementById('optionsBtn');
- const newGameBtn=document.getElementById('newGameBtn');
- const restartBtn=document.getElementById('restartBtn');
- const closeOptsBtn=document.getElementById('closeOptsBtn');
- const endNewBtn=document.getElementById('endNewBtn');
- 
- // --- Theme & Constants ---
- const theme={bg:'#87ceeb',tile:'#228B22',spike:'#a00',goal:'#FFD700',plat:'#654321',spring:'#0f0'};
- const GRAVITY=2000, JUMP_IMPULSE=650, ACCEL=1800, FASTFALL=2;
- const PORTAL_LIFE=1.75, PORTAL_SPEED=600, PORTAL_RADIUS=300;
- const TRACK_LEN=4000, CHECK_DIST=800;
- 
- // --- Track Gen ---
- function generateTrack(){
-   const tiles=[], spikes=[], checkpoints=[], platforms=[], springs=[];
-   let x=0,y=450;
-   while(x<TRACK_LEN){
-     const segW=300+Math.random()*200;
-     if(Math.random()<0.3) y=350+Math.random()*150;
-     const hasCP=x>0 && (x%CHECK_DIST)<segW;
-     tiles.push({x,y,w:segW,h:30});
-     if(hasCP) checkpoints.push({x:x+segW/2,hit:false});
-     if(!hasCP && Math.random()<0.4){
-       const cnt=1+Math.floor(Math.random()*3);
-       for(let i=0;i<cnt;i++) spikes.push({x:x+20+Math.random()*(segW-40),y:y-10,w:20,h:10});
-     }
-     if(Math.random()<0.3){ const px=x+50+Math.random()*(segW-100), py=y-150;
-       platforms.push({x:px,y:py,w:100,h:20,orig:px,dx:100,dir:1}); }
-     if(!hasCP && Math.random()<0.1) springs.push({x:x+segW/2,y:y-20,w:20,h:20});
-     x+=segW+60;
-   }
-   return {tiles,spikes,checkpoints,platforms,springs,finishX:x};
- }
- // --- Portal ---
- class Portal{
-   constructor(pos,dir,owner){
-     this.origin=pos; this.pos=pos; this.dir=dir.normalize();
-     this.timer=0; this.owner=owner; this.active=true;
-   }
-   update(dt){
-     if(!this.active) return;
-     const next = this.pos.add(this.dir.mul(PORTAL_SPEED*dt));
-     if(next.add(this.origin.mul(-1)).length()>PORTAL_RADIUS){
-       this.pos = this.origin.add(this.dir.mul(PORTAL_RADIUS));
-       this.teleport();
-     } else {
-       this.pos = next;
-       this.timer += dt;
-       if(this.timer>=PORTAL_LIFE) this.teleport();
-     }
-   }
-   teleport(){
-     this.owner.pos = new Vec2(this.pos.x, this.pos.y);
-     this.active = false;
-     this.owner.portalReady = false;
-     if(this.owner.isDead && this.owner.deathType==='fall'){
-       this.owner.isDead=false;
-       this.owner.deathType=null;
-     }
-   }
-   draw(off){
-     if(!this.active) return;
-     ctx.beginPath(); ctx.arc(this.pos.x-off,this.pos.y,10,0,2*Math.PI);
-     ctx.fillStyle='rgba(255,255,0,0.7)'; ctx.fill();
-   }
- }
- // --- Player ---
- class Player{
-   constructor(col,name,isHuman){
-     this.pos=new Vec2(); this.vel=new Vec2(); this.w=32; this.h=48;
-     this.spawn=new Vec2(); this.onGround=false; this.finished=false;
-     this.color=col; this.name=name; this.isHuman=isHuman;
-     this.portal=null; this.portalReady=true;
-     this.isDead=false; this.deathType=null; this.respawnTime=0;
-   }
-   init(x,y){ this.pos.x=x; this.pos.y=y; this.spawn=new Vec2(x,y); }
-   startDeath(type){ if(this.isDead) return;
-     this.isDead=true; this.deathType=type;
-     this.respawnTime = gameTime + 2;
-   }
-   respawn(){
-     this.pos = new Vec2(this.spawn.x,this.spawn.y);
-     this.vel = new Vec2(); this.onGround=false;
-     if(this.portal) this.portal.active=false;
-     this.portal=null;
-   }
-   handle(dt){ if(this.finished||this.isDead||gameState!==STATE.RUNNING) return;
-     let ax=0;
-     if(this.isHuman){
-       if(keys['KeyA']) ax-=ACCEL;
-       if(keys['KeyD']) ax+=ACCEL;
-       if(keys['Space']&&this.onGround){ this.vel.y=-JUMP_IMPULSE; this.onGround=false; }
-       if(keys['KeyS']&&!this.onGround) this.vel.y+=GRAVITY*(FASTFALL-1)*dt;
-     }
-     this.vel.x += ax*dt;
-   }
-   physics(dt){ if(!this.isDead){ this.vel.y+=GRAVITY*dt; this.pos=this.pos.add(this.vel.mul(dt)); this.vel.x*=0.9; }}
-   collide(track){ if(this.isDead) return;
-     this.onGround=false;
-     const solids=[...track.tiles,...track.platforms];
-     solids.forEach(t=>{
-       if(this.pos.x<t.x+t.w && this.pos.x+this.w>t.x && this.pos.y+this.h>t.y && this.pos.y<t.y+t.h){
-         const oy=(this.pos.y+this.h)-t.y;
-         if(oy<20){ this.pos.y=t.y-this.h; this.vel.y=0; this.onGround=true; }
-       }
-     });
-     track.spikes.forEach(s=>{
-       if(this.pos.x<s.x+s.w && this.pos.x+this.w>s.x && this.pos.y<s.y+s.h && this.pos.y+this.h>s.y){
-         this.startDeath('spike');
-       }
-     });
-     if(this.pos.y>canvas.height+100) this.startDeath('fall');
-     if(this.onGround) this.portalReady=true;
-   }
-   checkCp(track){ track.checkpoints.forEach(cp=>{
-     if(!cp.hit && this.pos.x>cp.x){
-       cp.hit=true;
-       this.spawn.x = cp.x;
-       // place spawn above platform
-       const solids=[...track.tiles,...track.platforms];
-       for(const t of solids) if(cp.x>=t.x && cp.x<=t.x+t.w){
-         this.spawn.y = t.y - this.h;
-         break;
-       }
-     }
-   }); }
-   update(dt,track){
-     this.handle(dt);
-     this.physics(dt);
-     this.collide(track);
-     this.checkCp(track);
-     if(this.portal) this.portal.update(dt);
-     if(this.isDead && gameTime>=this.respawnTime){ this.respawn(); this.isDead=false; this.deathType=null; }
-     if(!this.finished && this.pos.x+this.w>=track.finishX && gameState===STATE.RUNNING){
-       gameState=STATE.GAMEOVER; endOverlay.style.display='flex';
-     }
-   }
-   draw(off){
-     ctx.fillStyle=this.color;
-     ctx.fillRect(this.pos.x-off,this.pos.y,this.w,this.h);
-     ctx.fillStyle='#000';
-     ctx.fillRect(this.pos.x-off+8,this.pos.y+10,4,4);
-     ctx.fillRect(this.pos.x-off+20,this.pos.y+10,4,4);
-     if(this.portal) this.portal.draw(off);
-   }
- }
- // --- AI ---
- class AIPlayer extends Player{
-   constructor(c,n,s){ super(c,n,false); this.aiSpeed=s; }
-   handle(dt){ if(this.finished||this.isDead||gameState!==STATE.RUNNING) return;
-     this.vel.x = this.aiSpeed;
-     if(this.onGround && Math.random()<0.01) this.vel.y=-JUMP_IMPULSE;
-   }
- }
- // --- Setup ---
- const raw=generateTrack(), track={...raw};
- const racers=[ new Player(theme.goal,'You',true), new AIPlayer(theme.spike,'AI1',180), new AIPlayer(theme.spike,'AI2',200), new AIPlayer(theme.spike,'AI3',190) ];
- racers.forEach(r=>r.init(50,track.tiles[0].y-r.h));
- // --- UI Hooks ---
- startBtn.onclick=()=>{ menuOverlay.style.display='none'; gameState=STATE.COUNTDOWN; countdown=5; lastTime=performance.now(); };
- optionsBtn.onclick=()=>optionsOverlay.style.display='flex';
- closeOptsBtn.onclick=()=>optionsOverlay.style.display='none';
- restartBtn.onclick=newGameBtn.onclick=endNewBtn.onclick=()=>location.reload();
- // Portal key
- window.addEventListener('keydown',e=>{
-   if(e.code==='KeyJ'&&gameState===STATE.RUNNING){
-     const p=racers[0];
-     if(p.portalReady&&!p.portal){
-       const dir=new Vec2((keys['KeyD']?1:0)-(keys['KeyA']?1:0),(keys['KeyS']?1:0)-(keys['KeyW']?1:0));
-       if(dir.length()>0) p.portal=new Portal(new Vec2(p.pos.x+p.w/2,p.pos.y+p.h/2),dir,p);
-     }
-   }
- });
- // --- Loop ---
- function loop(ts){
-   const dt=(ts-lastTime)/1000; lastTime=ts; gameTime+=dt;
-   if(gameState===STATE.COUNTDOWN){ countdown-=dt; if(countdown<=0) gameState=STATE.RUNNING; }
-   racers.forEach(r=>r.update(dt,track));
-   track.platforms.forEach(p=>{ p.x+=p.dir*p.dx*dt; if(p.x<p.orig-p.dx||p.x>p.orig+p.dx) p.dir*=-1; });
-   let camX = racers[0].pos.x - canvas.width/2 + racers[0].w/2; camX=Math.max(0,camX);
-   ctx.fillStyle=theme.bg; ctx.fillRect(0,0,canvas.width,canvas.height);
-   ctx.fillStyle=theme.tile; track.tiles.forEach(t=>ctx.fillRect(t.x-camX,t.y,t.w,t.h));
-   ctx.fillStyle=theme.plat; track.platforms.forEach(p=>ctx.fillRect(p.x-camX,p.y,p.w,p.h));
-   ctx.fillStyle=theme.spike; track.spikes.forEach(s=>{ ctx.beginPath(); ctx.moveTo(s.x-camX,s.y+s.h); ctx.lineTo(s.x+10-camX,s.y); ctx.lineTo(s.x+20-camX,s.y+s.h); ctx.fill(); });
-   ctx.setLineDash([5,5]); ctx.strokeStyle='#fff'; track.checkpoints.forEach(cp=>{ ctx.beginPath(); ctx.moveTo(cp.x-camX,0); ctx.lineTo(cp.x-camX,canvas.height); ctx.stroke(); }); ctx.setLineDash([]);
-   ctx.fillStyle=theme.spring; track.springs.forEach(s=>ctx.fillRect(s.x-camX,s.y,s.w,s.h));
-   ctx.fillStyle=theme.goal; ctx.fillRect(track.finishX-camX,track.tiles[0].y-40,10,track.tiles[0].y+40);
-   racers.forEach(r=>r.draw(camX));
-   ctx.fillStyle='#fff'; ctx.font='20px sans-serif';
-   if(gameState===STATE.COUNTDOWN) ctx.fillText('Race starts in '+Math.ceil(countdown),canvas.width/2-80,100);
-   racers.forEach((r,i)=> ctx.fillText(`${r.name}: ${r.finished?'🏁':'🏃'}`,10,30+i*25));
-   requestAnimationFrame(loop);
- }
- requestAnimationFrame(loop);
- </script>
- </body>
- </html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Realm Runners (Web)</title>
+  <style>
+    body { margin:0; overflow:hidden; background:#000; }
+    canvas { display:block; margin:0 auto; background:#000; }
+    #menuOverlay, #optionsOverlay, #endOverlay {
+      position:absolute; top:0; left:0; width:100%; height:100%; display:flex;
+      justify-content:center; align-items:center; flex-direction:column;
+      background: rgba(0,0,0,0.8); color:#fff; font-family:sans-serif;
+      z-index:10;
+    }
+    #optionsOverlay, #endOverlay { display:none; }
+    button { padding:10px 20px; margin:10px; font-size:18px; cursor:pointer; }
+    #optionsBtn { position:absolute; top:10px; right:10px; z-index:5; width:32px; height:32px; font-size:24px; background:#444; color:#fff; border:none; cursor:pointer; }
+  </style>
+</head>
+<body>
+<div id="menuOverlay"><h1>Realm Runners</h1><button id="startBtn">Start Race</button></div>
+<div id="optionsOverlay"><h2>Options</h2><button id="newGameBtn">New Game</button><button id="restartBtn">Restart</button><button id="closeOptsBtn">Close</button></div>
+<div id="endOverlay"><h2>Race Finished!</h2><button id="endNewBtn">New Game</button></div>
+<button id="optionsBtn">+</button>
+<canvas id="game" width="1024" height="576"></canvas>
+<script>
+// Preload sprites
+const ASSETS = {
+  player: 'sprites/player.png',
+  ai: 'sprites/ai.png',
+  spike: 'sprites/spike.png',
+  spring: 'sprites/spring.png',
+  platform: 'sprites/platform.png',
+  background: 'sprites/bg.png',
+  goal: 'sprites/goal.png'
+};
+const images = {};
+let assetsLoaded = 0, totalAssets = Object.keys(ASSETS).length;
+for (let key in ASSETS) {
+  images[key] = new Image();
+  images[key].src = ASSETS[key];
+  images[key].onload = () => { if (++assetsLoaded === totalAssets) init(); };
+}
+// When images ready, init game
+function init() {
+  // Canvas and context
+  const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+
+  // ... (rest of game logic) ...
+
+  // Modify draw routines to use images:
+  // e.g. ctx.drawImage(images.player, x-off, y, w, h);
+
+  // Background parallax
+  function drawBackground(off) {
+    ctx.drawImage(images.background, -off*0.2 % canvas.width, 0);
+    ctx.drawImage(images.background, (-off*0.2 % canvas.width) + canvas.width, 0);
+  }
+
+  // Example draw code in loop:
+  function loop(ts) {
+    // ... logic ...
+    let camX = player.pos.x - canvas.width/2;
+    drawBackground(camX);
+    // draw platforms
+    track.tiles.forEach(t => ctx.drawImage(images.platform, t.x - camX, t.y, t.w, t.h));
+    // draw spikes
+    track.spikes.forEach(s => ctx.drawImage(images.spike, s.x - camX, s.y, s.w, s.h));
+    // draw springs
+    track.springs.forEach(s => ctx.drawImage(images.spring, s.x - camX, s.y, s.w, s.h));
+    // draw goal
+    ctx.drawImage(images.goal, track.finishX - camX - 16, track.tiles[0].y - 64, 32, 64);
+    // draw players
+    ctx.drawImage(images.player, player.pos.x - camX, player.pos.y, player.w, player.h);
+    racers.slice(1).forEach(ai => ctx.drawImage(images.ai, ai.pos.x - camX, ai.pos.y, ai.w, ai.h));
+    // ... UI ...
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
